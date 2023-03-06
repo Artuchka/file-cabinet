@@ -5,18 +5,19 @@ Page 7.
 it firstly, parses the whole programm
 
 proof:
+```
 var greeting = "Hello";
 console.log(greeting);
 greeting = ."Hi";
 // SyntaxError: unexpected token .
-
+```
 here, you see right? `Tokenization` part comes out <= no "Hello", though it's well-written error-free line.
 
 
 page 8.
 
 ### Early Errors
-
+```
 console.log("Howdy");
 saySomething("Hello","Hi");
 // Uncaught SyntaxError: Duplicate parameter name not
@@ -25,7 +26,7 @@ function saySomething(greeting,greeting) {
 	"use strict";
 	console.log(greeting);
 }
-
+```
 
 yeah, ofc, there would be no error without strict-mode, but anyways
 how does js knows whether to throw an (as called `early`) error, because of function being in strict-mode, if js haven't yet seen the "use strict" pragma, which appears later after function declaration?
