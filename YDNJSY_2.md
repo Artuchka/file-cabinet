@@ -1,3 +1,14 @@
+## Chapter 1:
+
+how does js program is compiled? 
+1. Tokenization \ Lexing = breaking up words into 'tokens'
+	`var a = 2;` turns into following tokens `var` `a` `=` `2` `;`
+2. Parsing = creating AST (Abstract Syntax Tree)
+	takes stream (array) of tokens, turns them into a tree of nested elements, which represent the grammatical structure of program.  
+3. Code generation
+	transforms AST into executable code
+
+
 Page 7.
 
 ### Syntax errors
@@ -120,36 +131,124 @@ Understanding targetVSsource helps us cover how a variable’s role impacts its 
 fails)
 
 
-page 15 Cheating: Runtime Scope
-Modifications
+page 15 Cheating: Runtime Scope Modifications\
+you can craete a runtime scope, not only compiled one
+
+1. use eval('')
+
+```js
+function badIdea() {
+	eval("var oops = 'Ugh!';");
+	console.log(oops);
+}
+badIdea();
+// Ugh!
+```
+eval(..) modifies the scope of the
+badIdea() function at runtime. This is bad for many rea-
+sons, including the performance hit of modifying the already
+compiled and optimized scope, every time badIdea() runs.
+
+
+2. umm, anyone heard of `with` keywoard?
+```js
+var badIdea = { oops: "Ugh!" };
+with (badIdea) {
+	console.log(oops); // Ugh!
+}
+```
+The global scope was not modified here, but badIdea was
+turned into a scope at runtime rather than compile time, and
+its property oops becomes a variable in that scope. Again, this
+is a terrible idea, for performance and readability reasons
+
+
+Fortunately, neither of these cheats is available in strict-mode
+
+
+### lexical scope
+the key
+idea of “lexical scope” is that it’s controlled entirely by the
+placement of functions, blocks, and variable declarations, in
+relation to one another.
+
+- compilation doesn’t actually do anything in terms of reserving memory for scopes and variables. None of the program has been executed yet.
+
+- instead, compilation creates a map of all the lexical scopes
+that lays out what the program will need while it executes.
+You can think of this plan as inserted code for use at runtime,
+which defines all the scopes (aka, “lexical environments”) and
+registers all the identifiers (variables) for each scope.
+
+- while scopes are identified during compilation, they’re not actually created until runtime, each time a scope needs to run
 
 
 
+## Chapter 2: Illustrating Lexical Scope
+
+- Variables are declared in specific scopes, which can
+be thought of as colored marbles from matching-color
+buckets
+
+- Any variable reference that appears in the scope where
+it was declared, or appears in any deeper nested scopes,
+will be labeled a marble of that same color—unless an
+intervening scope “shadows” the variable declaration;
+see “Shadowing” in Chapter 3.
+
+- The determination of colored buckets, and the marbles
+they contain, happens during compilation. This infor-
+mation is used for variable (marble color) “lookups”
+during code execution
 
 
+### Conversations amount friends
+
+How does JS engine process following program?
+
+```js
+var students = [
+	{ id: 14, name: "Kyle" },
+	{ id: 73, name: "Suzy" },
+	{ id: 112, name: "Frank" },
+	{ id: 6, name: "Sarah" }
+];
+```
+
+A reasonable assumption would be that Compiler will produce code for the first statement such as:\
+“Allocate memory for a variable,\
+label it students\
+, then stick a reference to the array into that variable.”
+
+But that’s not the whole story
+
+We should see what's inside `js engine`:
+- Engine: does start-to-finish (?as just manager?) compilation + execution of out JS program
+- Compiler: handles dirty work = parsing and code-generation
+- Scope Manager: collects + maintains a lookup list of all declared variables(identifiers); enforces rules as to how these [variables] are accesible to currently executing code   
+
+Steps Compiler will follow to handle that statement:
 
 
+So actually the story follows as: 
+1. Compiler tokenizes the code
+2. Compiler creates AST
+3. Long story begins...
 
+1. Compiler encounters `var studnets` 
+=> asks Scope Manager to look up a variable named `students` in particaular scope
+==> if exists, then compiler ignores declaration
+==> if does not exist, then compiler will produce code (at execution time) that asks ScopeManager to create new variable called `students` in that scope
 
+2. Compiler produces code for Engine to later execute = how to handle `students = []` assignment. 
+=> Later Enginge will execute this code and again ask ScopeManager if there's a `students` in current scope.
+==> if not in current scope, then Engine keeps digging up to Nested Scope
+=> when it finds variable, Engine assigns the reference of the [{...},{...},...] array to it
 
+ 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+-> 2. Later, when it comes to execution of the program, the con-
+versation will shift to Engine and Scope Manager
 
 
 
