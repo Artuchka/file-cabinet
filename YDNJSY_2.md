@@ -127,7 +127,7 @@ if (student.id == studentID)
 getStudentName(73), getStudentName is a source reference (which we hope resolves to a function reference value)
 
 
-Understanding targetVSsource helps us cover how a variable’s role impacts its lookup (specifically, if the lookup
+Understanding target VS source helps us cover how a variable’s role impacts its' lookup (specifically, if the lookup
 fails)
 
 
@@ -246,17 +246,542 @@ So actually the story follows as:
 => when it finds variable, Engine assigns the reference of the [{...},{...},...] array to it
 
  
-
 -> 2. Later, when it comes to execution of the program, the con-
 versation will shift to Engine and Scope Manager
 
 
+Shortly speaking `var students = [...]` is processed in 2 steps:
+1. Compiler sets up the declaration of the scope variables (it was not previously declared in current scope)
+2. While Engine is executing, to process the assignment
+part of the statement, Engine asks Scope Manager to look
+up the variable, initializes it to undefined so it’s ready
+to use, and then assigns the array value to it
+
+
+
+Nested Scope 
+When it comes time to execute the getStudentName() func-
+tion, Engine asks for a Scope Manager instance for that
+function’s scope, and it will then proceed to look up the
+parameter ( studentID ) to assign the 73 argument value to,
+and so on.
+
+
+- Each scope gets its own Scope Manager instance each time
+that scope is executed (one or more times).
+
+- Hoisiting = Each scope automatically has all its identifiers registered at the start of the
+scope being executed (this is called “variable hoisting”)
+
+- Look Up = One of the key aspects of lexical scope is that any time an
+identifier reference cannot be found in the current scope, the
+next outer scope in the nesting is consulted
+
+Look up failure may result in different ways depending on
+- whether identifier is called as target or source role
+- whether it is strict-mode
+
+code results in a ReferenceError if:
+- if variable is source, then unresolved identifier lookup = undeclared variable
+- strict-mode + target
+
+```js
+var studentName;
+typeof studentName; // "undefined"
+
+typeof doesntExist; // "undefined" but should smth like "undeclared" 
+```
+
+### Unexpected accidental Global variable
+
+It's legacy behavior for non-strict mode and target variable
+
+```js
+function getStudentName() {
+	// assignment to an undeclared variable :(
+	nextStudent = "Suzy";
+}
+
+getStudentName();
+console.log(nextStudent);
+// "Suzy" -- oops, an accidental-global variable!
+```
+
+In strict-mode, the Global Scope Manager would instead have responded:\ 
+(Global) Scope Manager: Nope, never heard of it. Sorry, I’ve got to throw a ReferenceError
+
+
+
+
+## Chapter 3: The scope chain
+
+scope chain stands for connections between scopes that are nested within other scopes.
+
+it determines path to access for variables  
+
+it's one-directonal = look up moves upward\outward only
+
+
+
+### Runtime `Lookup` is usually conceptual
+
+Suggestion of a `runtime lookup` process works well for
+conceptual understanding, but it’s not actually how things
+usually work in practice
+
+The color of variable (meta info of origin scope) is actually hard-determined at compilation
+stage.
+It removes non-essential perfomance trait  
+The meta info stored in variable's' entry in the AST
+
+
+Tho, there may be a reference to variable which is undeclared in any lexicalyy avaialbe scope OF CURRENT FILE. 
+if so, the variable scope origin will be uncolored (aka undefined after compilation),
+but eventually will be determined at execution process via shared global scope with other files
+
+
+### Shadowing
+
+Warning: that's bad practice to shadow global variables
+```js
+var studentName = "Suzy"; // RED SCOPED
+
+function printStudent(studentName) { // BLUE SCOPED `printStudent` FUNCTION + `studentName` function parameter
+	studentName = studentName.toUpperCase();
+	console.log(studentName);
+}
+
+printStudent("Frank"); // FRANK
+printStudent(studentName); // SUZY
+console.log(studentName); // Suzy
+```
+
+The BLUE(2) studentName variable (parameter) shad-
+ows the RED(1) studentName . So, the parameter is shadow-
+ing the (shadowed) global variable
+
+
+In this way we force downward scopes
+to reference only BLUE(2) scoped studentName if requested  
+
+
+### Unshadowing trick (only for global declarations)
+
+Warn: Bad practice; confuses the code reader
+
+`var` and `function` declarations expose themselves (with the same name as their lexical identifier) as properties on global object
+ 
+In browser environment `window` is name global object\ 
+Bad practice, but still legal
+```js
+var studentName = "Suzy";
+
+function printStudent(studentName) {
+	console.log(studentName);
+	console.log(window.studentName);
+}
+
+printStudent("Frank");
+// "Frank"
+// "Suzy"
+```
+
+
+thankfully there are `const` and `let`, which prevent global declarations
+
+```js
+var one = 1;
+let notOne = 2;
+const notTwo = 3;
+class notThree {}
+
+console.log(window.one); // 1
+console.log(window.notOne); // undefined
+console.log(window.notTwo); // undefined
+console.log(window.notThree); // undefined
+```
+
+proof, trick works only for global
+```js
+var special = 42;
+function lookingFor(special) {
+	// The identifier `special` (parameter) in this
+	// scope is shadowed inside keepLooking(), and
+	// is thus inaccessible from that scope.
+	function keepLooking() {
+		var special = 3.141592;
+		console.log(special);
+		console.log(window.special);
+	}
+	keepLooking();
+}
+lookingFor(123);
+// 3.141592
+// 42
+```
+RED(1) `special` = 42 is shadowed by BLUE(2) `special` = 123
+BLUE(2) `special` is shadowed by GREEN(3) `special` = 3.141592 
+
+But yeah, we can stil access special from RED(1) scope via global `window` object
+
+
+### Illegal shadowing
+
+1. only `let` can shadow `var`(which is ?kinda? on ?global function? object)
+2. but `var` cannot shadow `let`
+3. `var` can shadow `let` only if there's function boundary 
+
+1. 
+```js
+function something() {
+	var special = "JavaScript";
+	{
+		let special = 42;
+		// totally fine shadowing
+		// ..
+	}
+}
+```
+2. 
+```js
+function another() {
+	// ..
+	{
+		let special = "JavaScript";
+		{
+			var special = "JavaScript";
+			// ^^^ Syntax Error
+			// ..
+		}
+	}
+}
+
+```
+In the another() function, the inner var `special`
+declaration is attempting to declare a function-wide special ,
+which in and of itself is fine
+
+reason it’s raised as a SyntaxError is because the
+var is basically trying to “cross the boundary” of (or hop over)
+the let declaration of the same name, which is not allowed.
+
+3. 
+That boundary-crossing prohibition effectively stops at each
+function boundary, so this variant raises no exception
+```js
+
+function another() {
+	// ..
+	{
+		let special = "JavaScript";
+		ajax("https://some.url",function callback(){
+			// totally fine shadowing
+			var special = "JavaScript";
+		});
+	}
+}
+```
+
+
+### 'Function Name' scope
+
+1. Function declaration:
+```js
+function askQuestion() {
+	// ..
+}
+```
+we know, such a function declaration will create an identifier in the enclosing scope (in
+this case, the global scope) named askQuestion.
+
+
+2. the same goes for function expression:
+```js
+var askQuestion = function(){
+	// ..	
+};
+```
+the `askQuestion` variable will be hoisted, but not its' function definition, so yeah, the function will not hoist
+
+3. Named Function expressin = function expression with named function definition
+
+```js
+var askQuestion = function ofTheTeacher() {
+	console.log(ofTheTeacher);
+};
+
+askQuestion();
+// function ofTheTeacher()...
+
+console.log(ofTheTeacher);
+// ReferenceError: ofTheTeacher is not defined
+```
+
+as we can see, `ofTheTeacher` is declared as identifier in the scope of function itself
+that's why we are not able to call ofTheTeacher() by it's name in outer scope
+
+
+
+3.1 
+
+also it's read-only
+tho in non-strict-mode it would slip through with no assignment 
+
+```js
+var askQuestion = function ofTheTeacher() {
+	"use strict";
+	ofTheTeacher = 42;
+	// TypeError
+	//..
+};
+
+askQuestion();
+// TypeError
+
+```
+
+
+4. Arrow functions
+
+they are lexically anonymous = no directly related identifier that references the function.
+
+```js
+var askQuestion = () => {
+	// ..
+};
+askQuestion.name; // askQuestion
+```
+
+
+Summirize:
+- New Function defined = New scope created
+- Scope hierarchy of nested scopes is called `Scope chain`  
+- ScopeChain controls variables access(shadowing), oriented upward
+- Shadowing of outer scoped variable occurs when variable name is repeated in inner scope
+
+
+
+## Chaper 4: Global scope
+
+- What is it
+- Why it's useful and relevant to writing JS
+- How to access it
+- How it differs depending on environment
+
+
+### Why we gotta understand global 
+It's essential to understand global scope\
+for using lexical scope to structure programs 
+
+Ways to separate files, which are stitched together in a single runtime context by JS engine:
+*in browser environment*
+1. import ES module
+2. bundler (files' contents wrapped in a single enclosing scope Universal Module = UMD)
+```js
+function wrappingOuterScope(){
+	var moduleOne = (function one(){
+		// ..
+	})();
+	var moduleTwo = (function two(){
+		// ..
+		function callModuleOne() {
+			moduleOne.someMethod();
+		}
+		// ..
+	})();
+})();
+```
+wrappingOuterScope() is a function and
+not the full environment global scope, it does act as a sort
+of “application-wide scope,” a bucket where all the top-level
+identifiers can be stored, though not in the real global scope
+
+3. via `<script>` tags or other dynamic JS resource loading
+```js
+var moduleOne = (function one(){
+	// ..
+	}
+)();
+var moduleTwo = (function two(){
+	// ..
+	function callModuleOne() {
+		moduleOne.someMethod();
+		}
+		// ..
+	}
+)();
+```
+since there is no surrounding function scope, these
+moduleOne and moduleTwo declarations are simply dropped
+into the global scope
+
+
+so yeah, global store accounts where application's  code resided during runtime
+also global store is place where:
+- JS built-ins are exposed: 
+	- primitives: undefined , null , Infinity , NaN
+	- natives: Date() , Object() , String() , etc.
+	- global functions: eval() , parseInt() , etc.
+	- namespaces: Math , Atomics , JSON
+	- friends of JS: Intl , WebAssembly
+- The environment hosting the JS engine exposes its own
+built-ins:
+	- console
+	- DOM's properties and methods
+	- timers
+	- navigator, WebRTC etc
+
+
+Node exposed elements: 
+	- require()
+	- __dirname
+	- module
+	- URL, etc
+
+
+### Where Global scope is located?  
+
+depends on environment, actually
+
+1. Browser "Window"
+
+- the most pure JS environment (with least extension of expected behavior)
+- is declared within any script tag: 
+	- inline script
+	- src script tag
+	- dynamically created script tag as DOM element (from js probably)
+
+Real behavior is Expected one:
+```js
+var studentName = "Kyle";
+function hello() {
+	console.log(`Hello, ${ window.studentName }!`);
+}
+window.hello();
+// Hello, Kyle!
+```
+
+#### Tricky shadowing: 
+within just the global scope itself, a global object property can be
+shadowed by a global variable
+
+```js
+window.something = 42;
+let something = "Kyle";
+
+console.log(something); // Kyle
+console.log(window.something); // 42
+```
+
+`let` declaration adds a `something` global variable but not a global object property
+
+want to use global properites? (ugh, you, wierdo)\
+so just use ur old-fashioned-legacy-dinosour-australopitek `var` declaration, you dumb***
+
+#### Unexpected Global Extension in browser
+
+1. DOM elements with `id` attr
+a DOM element with an id attribute automatically creates a global variable
+that references it
+
+consider you have this markup:
+```html
+<ul id="my-todo-list">
+	<li id="first">Write a book</li>
+	..
+</ul>
+```
+
+so your js would work like in awesome reliable way:  (it's legacy browser behavior, actually)
+```js
+first; // <li id="first">..</li>
+
+window["my-todo-list"]; // <ul id="my-todo-list">..</ul>
+```
+
+
+2. `window` has a pre-defined global `name` property with typeof === 'string'
+```js
+var name = 42; // `var` redeclaration is ignored  
+console.log(name, typeof name); // "42" string
+// auto setter converted 42 number to "42" string
+```
+
+#### Purest enviroment in wild production
+
+it's WebWorkers!
+Web platform extension on top of browser js behavior,which allows a JS file to run in a completely
+separate thread (operating system wise) from the thread that’s running the main JS program
+
+- separated from main thread
+- does not have access to DOM
+- may have `navigator` access 
+- not sharing global scope with main JS program
+
+
+global is referenced by `this`: 
+```js
+var studentName = "Kyle";
+let studentID = 42;
+
+function hello() {
+	console.log(`Hello, ${ self.studentName }!`); // because defined globally by `var` declaration
+}
+
+self.hello(); // Hello, Kyle! // because defined globally by `function` declaration
+self.studentID; // undefined // because defined locally by `let` declaration
+```
+
+#### DevTools enviroment
+
+it's adherent js enviroment, because leant in favor to DeveloperExperience:
+- certain errors may be relaxed or not displayed
+- difference in:
+	- global scope behavior
+	- hoisting
+	- let\const (aka block-scoped declarations) behavior, when used in outermost scope
+
+#### ES Modules (aka ESM)
+
+core feature for first-class support for module pattern in ES6
+
+ESM changes behavior of observably top-level scope in a file:
+
+
+```js
+var studentName = "Kyle";
+
+function hello() {
+console.log(`Hello, ${ studentName }!`);
+}
+
+hello(); // Hello, Kyle!
+
+export hello; // `export` keywoard used to adjust to ESM format 
+```
+these `studentName` and `hello` are not global, they are that called `module-wide`
 
 
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
 
 
 
