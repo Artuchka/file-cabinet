@@ -1,6 +1,6 @@
 ## Chapter 1:
 
-how does js program is compiled? 
+js program is compiled in 3 steps: 
 1. Tokenization \ Lexing = breaking up words into 'tokens'
 	`var a = 2;` turns into following tokens `var` `a` `=` `2` `;`
 2. Parsing = creating AST (Abstract Syntax Tree)
@@ -12,7 +12,8 @@ how does js program is compiled?
 Page 7.
 
 ### Syntax errors
- js is not executing programm line-by-line
+
+js is not executing programm line-by-line
 it firstly, parses the whole programm
 
 proof:
@@ -135,7 +136,6 @@ page 15 Cheating: Runtime Scope Modifications\
 you can craete a runtime scope, not only compiled one
 
 1. use eval('')
-
 ```js
 function badIdea() {
 	eval("var oops = 'Ugh!';");
@@ -161,6 +161,11 @@ The global scope was not modified here, but badIdea was
 turned into a scope at runtime rather than compile time, and
 its property oops becomes a variable in that scope. Again, this
 is a terrible idea, for performance and readability reasons
+
+
+3. new Function("return this")
+yeah, functions may be created from string code
+nasty, i know  
 
 
 Fortunately, neither of these cheats is available in strict-mode
@@ -759,29 +764,525 @@ hello(); // Hello, Kyle!
 
 export hello; // `export` keywoard used to adjust to ESM format 
 ```
-these `studentName` and `hello` are not global, they are that called `module-wide`
+- these `studentName` and `hello` are not global variables, they are that called `module-wide` = `module-global`
+
+- (Un)Fortanatunately, there's no `module-wide scope object` as `this`, `self`, `window`. These declarations are not added as properites as in non-module JS files
+
+- Global variables may be accessed but not created in top-level scope of a module
 
 
+### globals in Node enviroment 
 
+every single file is treated as ESM or CommonJS module 
+it asserts that top-level of your Node programs is never actually the global scope (as in non-module file in browser)
 
+node has ESM support
 
+CommonJS:
+```js
+var studentName = "Kyle";
+function hello() {
+	console.log(\`Hello, ${ studentName }\`);
+}
+hello(); // Hello, Kyle!
 
+module.exports.hello = hello;
+```
 
+Before processing, program is wrapped inside a function
+so that `var` and `function` declaration not to being treated as global variables
+but module scoped:
+```js
+function Module(module,require,__dirname,...) {
+	var studentName = "Kyle";
+	function hello() {
+		console.log(`Hello, ${ studentName }!`);
+	}
+	hello(); 	// Hello, Kyle!
+	module.exports.hello = hello;
+}
+```
+To run ur code, Node just invokes that `Module(...)`
 
+U see, `require`, `__dirname` etc are not globals,
+they're just injected in `Module(...)` scope as parameters in function declaration 
 
+Accessing global object in Node:
+`global.global`
+Setting property on global object:
+```js
+global.studentName = "Kyle";
+function hello() {
+	console.log(`Hello, ${ studentName }!`);
+}
+hello(); // Hello, Kyle!
+module.exports.hello = hello;
+```
 
+#### globalThis
+in es2020, js has defined `globalThis` which retrieves global object
 
+#### Polyfill for `globalThis` 
 
-
-
-
-
-
-
-
-
-
+Funny Trick for obtaining reference to global scope object:
+```js
+const theGlobalScopeObject =
+	(typeof globalThis != "undefined") ? globalThis :
+	(typeof global != "undefined") ? global :
+	(typeof window != "undefined") ? window :
+	(typeof self != "undefined") ? self :
+	(new Function("return this"))();
+```
  
+## Chapter 5: Lifecycle of Variables
+
+### When variable is ready-to-use?
+
+```js
+greeting();
+// Hello!
+function greeting() {
+	console.log("Hello!");
+}
+```
+
+we know why it works, identifiers are REGISTERED during compile time (building AST),\
+also identifiers are CREATED at the beginning of the scope it belongs to, EVERY TIME that scope is entered\
+so there are no errors during execution time
+
+hoisting = process of creating identifiers at the beginning of the scope it belongs to = variable being visible from the beginning of its enclosing scope
+(even though its declaration may appear further down in the scope)
+
+but how does js knows:
+- why can we call `greeting()`
+- => whether it's a function (not a `number` maybe)
+- what this function does, returns
+
+Secret of calling function comes in *formal function declaration*:
+function declaration identifier is auto-initialized to function reference
+when it's registered(at compile time while building AST)
+
+`var` and `function` are hoisted at enclosing function scope, not just block scope
+`let` and `const` are hoisted at enclosing block scope only
+
+
+#### Function Hoisiting: Declaration vs Expression
+
+Expressions are hoisted but auto-initialized to `undefined` (at the beginning of the scope, again): 
+```js
+greeting(); // TypeError: 'greeting' is not a function.
+
+var greeting = function greeting() {
+	console.log("Hello!");
+};
+```
+You see, there's no _ReferenceError_, because `var` is still hoisted
+but not assigned to function reference
+
+Ofc, assignment processed durint runtime execution
+
+
+#### Variable hoisting: var
+```js
+// greeting is undefined
+greeting = "Hello!";
+// greeting is "Hello"
+
+console.log(greeting); // Hello!
+
+var greeting = "Howdy!";
+// greeting is "Howdy!"
+```
+
+No errors, all is right.
+2 reasons:
+- `greeting` is hoisted
+- auto-inited to _undefined_ from the top of the scope 
+
+Though, it's bad practice = feels unusual
+
+
+#### Methapor for Hoisiting
+
+Methapor: 
+JS engine rewrites program before execution:
+```js
+var greeting; // hoisted declaration
+greeting = "Hello!"; // the original line 1
+console.log(greeting); // Hello!
+greeting = "Howdy!"; // `var` is gone!
+```
+
+also, `function`s are hoisted before `var`
+```js
+studentName = "Suzy";
+greeting(); // Hello Suzy!
+function greeting() {
+	console.log(`Hello ${ studentName }!`);
+}
+var studentName;
+```
+
+transformed inside JS engine into: 
+```js
+function greeting() {
+	console.log(`Hello ${ studentName }!`);
+}
+var studentName;
+
+studentName = "Suzy";
+greeting(); // Hello Suzy!
+```
+WARNING: IT'S METHAPHOR ONLY
+
+it's attractive simplification, but not accurate.
+
+The only way to do so would be to fully parse the code.\
+Remember what parsing is? right! The first phase of 2-phase processing(COMPILING)! 
+
+Though members of TC39(ppl who develop ECMAScript) use this methaphor quite often!
+
+===> hoisting is compile-time operation of generating runtime instructions for the automatic registration of a variabe at the beginning of its scope, _each_ time that scope is entered
+
+
+### Re-declaration of variable or function
+
+Consider:
+```js
+var studentName = "Frank";
+console.log(studentName);// Frank
+
+var studentName;
+console.log(studentName); // ???
+```
+using methaphor from above,
+`???` will result in "Frank" too, because there's no re-declaration:
+```js
+var studentName;
+var studentName; // clearly a pointless no-op!
+studentName = "Frank";
+```
+it's declared twice, auto-initialized to `undefined` once and initialized to `Frank` once.
+
+but in reality, outside of methaphor:
+- Compiler asks ScopeManager if it has _studentName_ identifier ABOUT LINE 1
+- ScopeManager says 'no' and creates _studentName_ identifier
+- Compiler asks ScopeManager if it has _studentName_ identifier ABOUT LINE 2
+- ScopeManager says 'yes' and does nothing new
+
+
+```js
+var greeting; // registering + auto-inited to `undefined`
+
+function greeting() { 
+// no registering because of 1 line
+// but function hoisting overrides the auto-init to use function reference 
+	console.log("Hello!");
+}
+
+var greeting; // basically, a no-op
+
+typeof greeting; // "function"
+
+var greeting = "Hello!"; // changing type
+typeof greeting; // "string"
+```
+
+#### redeclaration using `const` or `let`
+
+Following would throw a SyntaxError:
+```js
+let studentName = "Frank";
+console.log(studentName);
+let studentName = "Suzy" // SyntaxError: studentName has already been declared
+```
+
+```js
+var studentName = "Frank";
+let studentName = "Suzy"; // SyntaxError: ...
+```
+
+```js
+let studentName = "Frank";
+var studentName = "Suzy"; // SyntaxError: ...
+```
+
+It might be technically allowed back then in ES6 (for `let` only though),
+but tc39 decided to not allow to prevent `social-engeering` issue 
+
+#### const
+
+1. `const` must be assigned
+```js
+const empty; // SyntaxError
+```
+
+2. `const` cannot be re-assigned
+```js
+const studentName = "Frank";
+console.log(studentName); // Frank
+
+studentName = "Suzy"; // TypeError
+```
+- _Syntax errors_ represent faults in the program that stop it from even starting execution.
+- _Type errors_ represent faults that arise during program execution.
+
+In the preceding snippet, "Frank" is PRINTED out before
+we process the re-assignment of studentName,
+which then throws the error.
+
+there's no re-declaration as with `var`, because of 2 rules above
+
+
+
+#### Re-declaration Behavior inside loops
+
+
+1. `let` in loop
+no redeclaration in following:
+```js
+var keepGoing = true;
+while (keepGoing) {
+	let value = Math.random();
+	if (value > 0.5) {
+		keepGoing = false;
+	}
+}
+```
+becuase remember? everything resets when the scope is enetered again
+so yeah, it's one declaration *per scope instance*
+
+2. `var` in loop
+```js
+var keepGoing = true;
+while (keepGoing) {
+	var value = Math.random();
+	if (value > 0.5) {
+		keepGoing = false;
+	}
+}
+```
+`var` is not block-scoped but function-scoped,
+so `keepGoing` inside for-loop attaches itself
+to the outer (global in this case) scope variable `keepGoing`
+
+
+3. for-loop
+
+##### standart for-loop form:
+```js
+for (let i = 0; i < 3; i++) {
+	let value = i * 10;
+	console.log(`${ i }: ${ value }`);
+}
+```
+again, `value` is declared once per scope instance
+
+`i` is in scope of for-loop body, just like `value` is.
+
+for-loop may be represented as:
+```js
+{
+	// a fictional variable for illustration
+	let $$i = 0;
+
+	for ( /* nothing */; $$i < 3; $$i++) {
+		// here's our actual loop `i`!
+		let i = $$i;
+		let value = i * 10;
+		console.log(`${ i }: ${ value }`);
+	}
+}
+```
+now it's clear, `$$i` (= actual `i`) is declared once per scope instance
+
+##### other loop forms:
+absoulutely the same logic goes for following: 
+```js
+for (let index in students) {
+	// this is fine
+}
+
+for (let student of students) {
+	// so is this
+}
+```
+
+##### `const` in loops:
+
+all 3 following work fine:
+```js
+var keepGoing = true;
+while (keepGoing) {
+	// ooo, a shiny constant!
+	const value = Math.random();
+	if (value > 0.5) {
+		keepGoing = false;
+	}
+}
+
+for (const index in students) {
+	// this is fine
+}
+
+for (const student of students) {
+	// this is also fine
+}
+```
+
+except general for-loop:
+
+
+```js
+for (const i = 0; i < 3; i++) {
+	// oops, this is going to fail with
+	// a Type Error after the first iteration
+}
+```
+
+because or fictional for-loop would look like this:
+```js
+{
+	// a fictional variable for illustration
+	const $$i = 0;
+
+	for ( ; $$i < 3; $$i++) { 
+		// all fine
+	}
+}
+```
+so the problem comes in `$$i++` operation
+we're trying to increment the `const` variable = that's re-ASSIGNMENT
+
+
+### Uninitialized variables, aka TDZ
+
+we know that `var` is hoisted = registered + auto-inited (to _undefined_)
+
+but `let` and `const` are not quite the same:
+```js
+console.log(studentName); // ReferenceError: Cannot access studentName before initialization
+let studentName = "Suzy";
+```
+
+oki doki, let's initialize as you plese, V8:
+```js
+studentName = "Suzy"; // let's try to ?initialize? it!
+console.log(studentName);
+let studentName;
+```
+
+still _ReferenceError: ..._ on 1st line: trying to assign aka initalize the uninitalized variabe studentName
+
+but actually we are not initalizing the studentName on 1st line: we're assigning only\
+for `let` or `const` the *only way* to init the variable is\
+assignment attached to a declaration statement:
+```js
+let studentName = "Suzy";
+console.log(studentName); // Suzy
+```
+
+the same alternative way:
+```js
+let studentName;  // or let studentName = undefined;
+
+studentName = "Suzy";
+console.log(studentName); // Suzy
+```
+
+Also u should know that Compiler removes all of `var\let\const` declarators,
+replacing them with the instructions at the top of each scope to register the identifiers
+
+Therefore, with `const` and `let` Compiler adds instruction
+for auto-initalization right in the middle of program,
+so we cannot use the variable before that instruction
+
+
+###### TDZ = Temporal Dead Zone: period of time from entering the scope till where auto-init occurs
+
+TDZ is time window where a variable exists but is still uninited => cannot be accessed  
+
+btw:
+- `var` has TDZ also, but it's zero ms
+- Temporal = about *time* not _position_ aka lines!!
+ 
+
+```js
+1. askQuestion(); // ReferenceError
+2. 
+3. let studentName = "Suzy";
+4. function askQuestion() {
+5. 	console.log(`${ studentName }, do you know?`);
+6. }
+```
+1. remember that `let` instructions for init are in the middle of the program
+ 
+2. time from 1st till 2nd line is TDZ for `studentName`
+
+now you see, why temporal is about TIME not just POSITION
+yeah, because in TIMING WISE `askQuestion()` is invoked before `studentName` declaration  
+
+
+also remember: TDZ does not mean that `let\const` are not hoisted as `var` is.
+`let\const` are hoisted, ofc.
+
+`let\const` are not automatically initialized at the beginning if the scope as `var` does.
+
+therefore let's call _hoisting_ only _auto-registration_ part
+so auto-initialization is distinct operation
+
+we've seen that `let\const` are not auto-inited\
+let's prove that  they'are auto-registered aka hoisted:
+```js
+var studentName = "Kyle";
+{
+	console.log(studentName); // ???
+	let studentName = "Suzy";
+	console.log(studentName);  // Suzy
+}
+```
+`???` should result in _ReferenceError: Cannot access studentName before initialization_
+why it might be? \
+only if inner-scoped studentName is registered(aka hoisted) at the top of it's enclosing scope
+(but still not initalized)
+
+if `studentName` wasn't hoisted, `???` would print "Kyle" with no Error
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
